@@ -1,76 +1,121 @@
-import utils
+import ctypes
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
-class PythonMarketMaker:
+# Load the shared library
+lib_path = Path(__file__).parent / "utils.so"  # Use .dll on Windows
+lib = ctypes.CDLL(str(lib_path))
+
+# Define C++ function interfaces
+lib.createMarketMaker.restype = ctypes.c_void_p
+lib.createMarketMaker.argtypes = []
+
+lib.deleteMarketMaker.argtypes = [ctypes.c_void_p]
+
+lib.calculateSpread.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double),
+    ctypes.POINTER(ctypes.c_double)
+]
+
+lib.updatePosition.argtypes = [
+    ctypes.c_void_p,
+    ctypes.c_char_p,
+    ctypes.c_double,
+    ctypes.c_double,
+    ctypes.c_bool
+]
+
+lib.getPosition.restype = ctypes.c_double
+lib.getPosition.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
+lib.getAvgPrice.restype = ctypes.c_double
+lib.getAvgPrice.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
+class MarketMaker:
     def __init__(self):
-        self.mm = utils.MarketMaker()
+        self._mm = lib.createMarketMaker()
         self.trades = []
-        self.positions = {}
-        self.price_history = {}
         
-    def quote_price(self, ticker, ref_price, volume):
-        # Get current position
-        pos = self.positions.get(ticker, 0)
+    def __del__(self):
+        if hasattr(self, '_mm'):
+            lib.deleteMarketMaker(self._mm)
+            
+    def quote_price(self, ticker: str, price: float, volume: float) -> dict:
+        bid = ctypes.c_double()
+        offer = ctypes.c_double()
+        vol = ctypes.c_double()
         
-        # Store price history for volatility calculation
-        if ticker not in self.price_history:
-            self.price_history[ticker] = []
-        self.price_history[ticker].append(ref_price)
-        
-        # Calculate spread based on position and volatility
-        bid, offer = self.mm.calculate_spread(ref_price, pos)
-        
-        # Get current volatility for logging
-        vol = self.mm.get_volatility()
+        lib.calculateSpread(
+            self._mm,
+            ticker.encode('utf-8'),
+            price,
+            volume,
+            ctypes.byref(bid),
+            ctypes.byref(offer),
+            ctypes.byref(vol)
+        )
         
         return {
             'ticker': ticker,
-            'bid': bid,
-            'offer': offer,
-            'ref_price': ref_price,
+            'bid': bid.value,
+            'offer': offer.value,
+            'ref_price': price,
             'volume': volume,
-            'volatility': vol
+            'volatility': vol.value
         }
         
-    def execute_trade(self, quote, is_buy):
+    def execute_trade(self, quote: dict, is_buy: bool):
         ticker = quote['ticker']
         price = quote['bid'] if is_buy else quote['offer']
         volume = quote['volume']
         
-        # Update position
-        self.mm.update_position(volume, is_buy)
-        self.positions[ticker] = self.positions.get(ticker, 0) + (volume if is_buy else -volume)
+        lib.updatePosition(
+            self._mm,
+            ticker.encode('utf-8'),
+            volume,
+            price,
+            is_buy
+        )
         
-        # Record trade with volatility info
         self.trades.append({
             'ticker': ticker,
             'price': price,
             'volume': volume,
             'side': 'buy' if is_buy else 'sell',
-            'position': self.positions[ticker],
+            'position': self.get_position(ticker),
+            'avg_price': self.get_avg_price(ticker),
             'volatility': quote['volatility'],
             'spread_pct': (quote['offer'] - quote['bid']) / quote['ref_price']
         })
         
-    def get_positions(self):
-        return self.positions
+    def get_position(self, ticker: str) -> float:
+        return lib.getPosition(self._mm, ticker.encode('utf-8'))
         
-    def get_trades(self):
+    def get_avg_price(self, ticker: str) -> float:
+        return lib.getAvgPrice(self._mm, ticker.encode('utf-8'))
+        
+    def get_trades(self) -> pd.DataFrame:
         return pd.DataFrame(self.trades)
     
-    def get_market_stats(self, ticker):
+    def get_market_stats(self, ticker: str) -> dict:
         trades_df = self.get_trades()
         ticker_trades = trades_df[trades_df['ticker'] == ticker]
         
         return {
             'avg_spread': ticker_trades['spread_pct'].mean(),
             'avg_vol': ticker_trades['volatility'].mean(),
-            'position': self.positions.get(ticker, 0)
+            'position': self.get_position(ticker),
+            'avg_price': self.get_avg_price(ticker)
         }
 
 def main():
-    mm = PythonMarketMaker()
+    mm = MarketMaker()
     
     # Example usage with price series
     prices = [150.0, 151.2, 149.8, 152.3, 151.5]
@@ -82,7 +127,6 @@ def main():
         if np.random.random() > 0.5:
             mm.execute_trade(quote, np.random.random() > 0.5)
     
-    # Print trading stats
     print("\nTrading Statistics:")
     print(mm.get_market_stats('AAPL'))
     print("\nTrade History:")
