@@ -51,26 +51,36 @@ public:
         }
     }
     
-    void calculateSpread(double price, double volume, double* bid, double* offer) {
+    double calculateBid(double price, double volume) {
         ref_price = price;
         updatePriceHistory(price);
         double vol_multiplier = calculateVolatility();
         
         if (position == 0) {
-            double spread = 0.02 * vol_multiplier;
-            *bid = price * (1.0 - spread);
-            *offer = price * (1.0 + spread);
-            return;
+            return price * (1.0 - 0.02 * vol_multiplier);
         }
         
         if (position > 0) {
-            *bid = price * (1.0 - 0.01 * vol_multiplier);
-            *offer = price * (1.0 + 0.07 * vol_multiplier);
-            return;
+            return price * (1.0 - 0.01 * vol_multiplier);
         }
         
-        *bid = price * (1.0 - 0.07 * vol_multiplier);
-        *offer = price * (1.0 + 0.01 * vol_multiplier);
+        return price * (1.0 - 0.07 * vol_multiplier);
+    }
+
+    double calculateAsk(double price, double volume) {
+        ref_price = price;
+        updatePriceHistory(price);
+        double vol_multiplier = calculateVolatility();
+        
+        if (position == 0) {
+            return price * (1.0 + 0.02 * vol_multiplier);
+        }
+        
+        if (position > 0) {
+            return price * (1.0 + 0.07 * vol_multiplier);
+        }
+        
+        return price * (1.0 + 0.01 * vol_multiplier);
     }
 
     void updatePosition(double volume, bool is_buy) {
@@ -91,23 +101,34 @@ extern "C" {
         return new MarketMaker();
     }
     
-    EXPORT void deleteMarketMaker(MarketMaker* mm) {
+    EXPORT void destroyMarketMaker(MarketMaker* mm) {
         delete mm;
     }
     
-    EXPORT void calculateSpread(MarketMaker* mm, double price, double volume, double* bid, double* offer) {
-        mm->calculateSpread(price, volume, bid, offer);
+    EXPORT double MarketMaker_calculateBid(MarketMaker* mm, double price, double volume) {
+        return mm->calculateBid(price, volume);
     }
     
-    EXPORT void updatePosition(MarketMaker* mm, double volume, bool is_buy) {
+    EXPORT double MarketMaker_calculateAsk(MarketMaker* mm, double price, double volume) {
+        return mm->calculateAsk(price, volume);
+    }
+    
+    EXPORT void MarketMaker_updatePosition(MarketMaker* mm, double volume, bool is_buy) {
         mm->updatePosition(volume, is_buy);
     }
     
-    EXPORT double getPosition(MarketMaker* mm) {
+    EXPORT double MarketMaker_getPosition(MarketMaker* mm) {
         return mm->getPosition();
     }
     
-    EXPORT double getVolatility(MarketMaker* mm) {
+    EXPORT double MarketMaker_getVolatility(MarketMaker* mm) {
         return mm->getVolatility();
     }
 }
+// matching
+// bid ask
+// vol
+
+//risk
+// market manipulation to enhance out positions
+//skew
