@@ -1,20 +1,43 @@
-# main.py
 import ctypes
 import os
-from AmplifyQuantTrading import Data, Exchange, MarketMaker, HedgeFund as hf
 
-# Load the shared library directly, assuming it's in the same directory
-lib = ctypes.CDLL("./libutils.so") 
+# Load the shared library
+lib = ctypes.CDLL("./libutils.so")
 
-# Define the argument and return types of the C++ functions
-lib.add.argtypes = [ctypes.c_int, ctypes.c_int]
-lib.add.restype = ctypes.c_int
+# Define the MarketMaker opaque pointer type
+class MarketMaker(ctypes.Structure):
+    _fields_ = []  # No fields are needed, it's an opaque pointer
 
-lib.greet.argtypes = [ctypes.c_char_p]
-lib.greet.restype = None  # Void function
+# Set argument and return types for the C functions
+lib.createMarketMaker.restype = ctypes.POINTER(MarketMaker)
+lib.destroyMarketMaker.argtypes = [ctypes.POINTER(MarketMaker)]
+lib.MarketMaker_calculateBid.argtypes = [ctypes.POINTER(MarketMaker), ctypes.c_double, ctypes.c_double]
+lib.MarketMaker_calculateBid.restype = ctypes.c_double
+lib.MarketMaker_calculateAsk.argtypes = [ctypes.POINTER(MarketMaker), ctypes.c_double, ctypes.c_double]
+lib.MarketMaker_calculateAsk.restype = ctypes.c_double
+lib.MarketMaker_updatePosition.argtypes = [ctypes.POINTER(MarketMaker), ctypes.c_double, ctypes.c_bool]
+lib.MarketMaker_getPosition.argtypes = [ctypes.POINTER(MarketMaker)]
+lib.MarketMaker_getPosition.restype = ctypes.c_double
+lib.MarketMaker_getVolatility.argtypes = [ctypes.POINTER(MarketMaker)]
+lib.MarketMaker_getVolatility.restype = ctypes.c_double
 
-# Call the C++ functions
-result = lib.add(5, 3)
-print(f"Result from C++ add function: {result}")
+# Create a MarketMaker instance
+mm = lib.createMarketMaker()
 
-lib.greet(b"Blin")  # Pass a byte string
+# Example usage
+price = 100.0
+volume = 10.0
+
+bid = lib.MarketMaker_calculateBid(mm, price, volume)
+ask = lib.MarketMaker_calculateAsk(mm, price, volume)
+print(f"Bid: {bid}, Ask: {ask}")
+
+lib.MarketMaker_updatePosition(mm, 5.0, True)  # Buy 5 units
+position = lib.MarketMaker_getPosition(mm)
+print(f"Position: {position}")
+
+volatility = lib.MarketMaker_getVolatility(mm)
+print(f"Volatility: {volatility}")
+
+# Clean up: Destroy the MarketMaker instance when done
+lib.destroyMarketMaker(mm)
