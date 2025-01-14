@@ -1,16 +1,10 @@
 # main.py
 import ctypes
 import os
+from AmplifyQuantTrading import Data, Exchange, MarketMaker, HedgeFund as hf
 
-# Determine the directory the script is running in
-script_dir = os.path.dirname(os.path.abspath(__file__))
-
-# Construct the full path to the shared library
-lib_path = os.path.join(script_dir, "libutils.dylib")
-
-# Load the shared library
-# Use the full path
-lib = ctypes.CDLL(lib_path)
+# Load the shared library directly, assuming it's in the same directory
+lib = ctypes.CDLL("./libutils.so") 
 
 # Define the argument and return types of the C++ functions
 lib.add.argtypes = [ctypes.c_int, ctypes.c_int]
@@ -23,4 +17,4 @@ lib.greet.restype = None  # Void function
 result = lib.add(5, 3)
 print(f"Result from C++ add function: {result}")
 
-lib.greet(b"World")  # Pass a byte string
+lib.greet(b"Blin")  # Pass a byte string
