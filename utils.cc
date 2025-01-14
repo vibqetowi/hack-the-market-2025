@@ -1,7 +1,13 @@
-#include <boost/python.hpp>
+// utils.cc
+#include <iostream>
 
-BOOST_PYTHON_MODULE(hello_ext)
-{
-    using namespace boost::python;
-    def("greet", greet);
+extern "C" {
+    int add(int a, int b) {
+        std::cout << "Adding " << a << " and " << b << " in C++" << std::endl;
+        return a + b;
+    }
+
+    void greet(const char* name) {
+        std::cout << "Hello, " << name << " from C++!" << std::endl;
+    }
 }
