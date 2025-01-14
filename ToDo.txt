@@ -1,0 +1,6 @@
+the goal of the challenge is to automate the market making process, using oop, with c++ utils.cc and python main.py, a new main will be made for every challenge
+automatically create a bid-offer spread around the reference price. and procide a 2% non-skewed bid and offer for each trade.
+
+optimise for speed, performance and profitablity.
+
+then we can analyze the adversaries in the market to maximize profitablity.
