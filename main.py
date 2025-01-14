@@ -1,136 +1,43 @@
 import ctypes
-import numpy as np
-import pandas as pd
-from pathlib import Path
+import os
 
 # Load the shared library
-lib_path = Path(__file__).parent / "utils.so"  # Use .dll on Windows
-lib = ctypes.CDLL(str(lib_path))
+lib = ctypes.CDLL("./libutils.so")
 
-# Define C++ function interfaces
-lib.createMarketMaker.restype = ctypes.c_void_p
-lib.createMarketMaker.argtypes = []
+# Define the MarketMaker opaque pointer type
+class MarketMaker(ctypes.Structure):
+    _fields_ = []  # No fields are needed, it's an opaque pointer
 
-lib.deleteMarketMaker.argtypes = [ctypes.c_void_p]
+# Set argument and return types for the C functions
+lib.createMarketMaker.restype = ctypes.POINTER(MarketMaker)
+lib.destroyMarketMaker.argtypes = [ctypes.POINTER(MarketMaker)]
+lib.MarketMaker_calculateBid.argtypes = [ctypes.POINTER(MarketMaker), ctypes.c_double, ctypes.c_double]
+lib.MarketMaker_calculateBid.restype = ctypes.c_double
+lib.MarketMaker_calculateAsk.argtypes = [ctypes.POINTER(MarketMaker), ctypes.c_double, ctypes.c_double]
+lib.MarketMaker_calculateAsk.restype = ctypes.c_double
+lib.MarketMaker_updatePosition.argtypes = [ctypes.POINTER(MarketMaker), ctypes.c_double, ctypes.c_bool]
+lib.MarketMaker_getPosition.argtypes = [ctypes.POINTER(MarketMaker)]
+lib.MarketMaker_getPosition.restype = ctypes.c_double
+lib.MarketMaker_getVolatility.argtypes = [ctypes.POINTER(MarketMaker)]
+lib.MarketMaker_getVolatility.restype = ctypes.c_double
 
-lib.calculateSpread.argtypes = [
-    ctypes.c_void_p,
-    ctypes.c_char_p,
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.POINTER(ctypes.c_double),
-    ctypes.POINTER(ctypes.c_double),
-    ctypes.POINTER(ctypes.c_double)
-]
+# Create a MarketMaker instance
+mm = lib.createMarketMaker()
 
-lib.updatePosition.argtypes = [
-    ctypes.c_void_p,
-    ctypes.c_char_p,
-    ctypes.c_double,
-    ctypes.c_double,
-    ctypes.c_bool
-]
+# Example usage
+price = 100.0
+volume = 10.0
 
-lib.getPosition.restype = ctypes.c_double
-lib.getPosition.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+bid = lib.MarketMaker_calculateBid(mm, price, volume)
+ask = lib.MarketMaker_calculateAsk(mm, price, volume)
+print(f"Bid: {bid}, Ask: {ask}")
 
-lib.getAvgPrice.restype = ctypes.c_double
-lib.getAvgPrice.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+lib.MarketMaker_updatePosition(mm, 5.0, True)  # Buy 5 units
+position = lib.MarketMaker_getPosition(mm)
+print(f"Position: {position}")
 
-class MarketMaker:
-    def __init__(self):
-        self._mm = lib.createMarketMaker()
-        self.trades = []
-        
-    def __del__(self):
-        if hasattr(self, '_mm'):
-            lib.deleteMarketMaker(self._mm)
-            
-    def quote_price(self, ticker: str, price: float, volume: float) -> dict:
-        bid = ctypes.c_double()
-        offer = ctypes.c_double()
-        vol = ctypes.c_double()
-        
-        lib.calculateSpread(
-            self._mm,
-            ticker.encode('utf-8'),
-            price,
-            volume,
-            ctypes.byref(bid),
-            ctypes.byref(offer),
-            ctypes.byref(vol)
-        )
-        
-        return {
-            'ticker': ticker,
-            'bid': bid.value,
-            'offer': offer.value,
-            'ref_price': price,
-            'volume': volume,
-            'volatility': vol.value
-        }
-        
-    def execute_trade(self, quote: dict, is_buy: bool):
-        ticker = quote['ticker']
-        price = quote['bid'] if is_buy else quote['offer']
-        volume = quote['volume']
-        
-        lib.updatePosition(
-            self._mm,
-            ticker.encode('utf-8'),
-            volume,
-            price,
-            is_buy
-        )
-        
-        self.trades.append({
-            'ticker': ticker,
-            'price': price,
-            'volume': volume,
-            'side': 'buy' if is_buy else 'sell',
-            'position': self.get_position(ticker),
-            'avg_price': self.get_avg_price(ticker),
-            'volatility': quote['volatility'],
-            'spread_pct': (quote['offer'] - quote['bid']) / quote['ref_price']
-        })
-        
-    def get_position(self, ticker: str) -> float:
-        return lib.getPosition(self._mm, ticker.encode('utf-8'))
-        
-    def get_avg_price(self, ticker: str) -> float:
-        return lib.getAvgPrice(self._mm, ticker.encode('utf-8'))
-        
-    def get_trades(self) -> pd.DataFrame:
-        return pd.DataFrame(self.trades)
-    
-    def get_market_stats(self, ticker: str) -> dict:
-        trades_df = self.get_trades()
-        ticker_trades = trades_df[trades_df['ticker'] == ticker]
-        
-        return {
-            'avg_spread': ticker_trades['spread_pct'].mean(),
-            'avg_vol': ticker_trades['volatility'].mean(),
-            'position': self.get_position(ticker),
-            'avg_price': self.get_avg_price(ticker)
-        }
+volatility = lib.MarketMaker_getVolatility(mm)
+print(f"Volatility: {volatility}")
 
-def main():
-    mm = MarketMaker()
-    
-    # Example usage with price series
-    prices = [150.0, 151.2, 149.8, 152.3, 151.5]
-    for price in prices:
-        quote = mm.quote_price('AAPL', price, 100)
-        print(f"Quote: {quote}")
-        
-        # Simulate random trading
-        if np.random.random() > 0.5:
-            mm.execute_trade(quote, np.random.random() > 0.5)
-    
-    print("\nTrading Statistics:")
-    print(mm.get_market_stats('AAPL'))
-    print("\nTrade History:")
-    print(mm.get_trades())
-
-if __name__ == "__main__":
-    main()
+# Clean up: Destroy the MarketMaker instance when done
+lib.destroyMarketMaker(mm)
